@@ -32,13 +32,15 @@ The client ID is public; store the client secret as a Worker secret:
 
 ```sh
 npx wrangler secret put TWITCH_CLIENT_SECRET
-npx wrangler deploy
+npm run deploy
 ```
 
 Authorize the bot by visiting your deployed Worker URL followed by `/login`.
-For local development, use `npx wrangler dev` and register the local callback
-URL with your Twitch application. Wrangler must be installed or invoked with
-`npx`.
+For local development, use `npm run dev` and register the local callback URL
+with your Twitch application. These commands explicitly use `wrangler.toml`,
+which points Wrangler at the module Worker in `worker.js`. Do not use
+`index.js` as the Cloudflare Worker entry point; it is the separate Node.js
+server for local use.
 
 ## Chat commands
 
