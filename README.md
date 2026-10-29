@@ -21,6 +21,25 @@ Configure these values in `.env` before starting:
 The server listens on port 3000. Open its URL followed by `/login` to authorize
 the bot.
 
+## Deploy to Cloudflare Workers
+
+The Cloudflare entry point uses a Durable Object to keep the Twitch chat
+connection alive and store OAuth tokens. Set `TWITCH_BOT_USERNAME`,
+`TWITCH_CHANNELS`, and `OAUTH_REDIRECT_URI` in `wrangler.toml`. Set the
+redirect URI to your Worker URL ending in
+`/auth/twitch/callback`, and register that exact URL in the Twitch application.
+The client ID is public; store the client secret as a Worker secret:
+
+```sh
+npx wrangler secret put TWITCH_CLIENT_SECRET
+npx wrangler deploy
+```
+
+Authorize the bot by visiting your deployed Worker URL followed by `/login`.
+For local development, use `npx wrangler dev` and register the local callback
+URL with your Twitch application. Wrangler must be installed or invoked with
+`npx`.
+
 ## Chat commands
 
 Everyone can use:

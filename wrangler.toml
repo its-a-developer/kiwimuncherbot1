@@ -1,4 +1,17 @@
-# ...
+name = "kiwimuncherbot"
+main = "worker.js"
+compatibility_date = "2026-10-29"
+
 [vars]
-TWITCH_CLIENT = "jawgynnw6fcaixkqmwhzhbqgnm37e3"
-# ...
+TWITCH_CLIENT_ID = "jawgynnw6fcaixkqmwhzhbqgnm37e3"
+TWITCH_BOT_USERNAME = "YOUR_BOT_USERNAME"
+TWITCH_CHANNELS = "YOUR_CHANNEL"
+OAUTH_REDIRECT_URI = "https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/auth/twitch/callback"
+
+[[durable_objects.bindings]]
+name = "BOT"
+class_name = "TwitchBot"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["TwitchBot"]
