@@ -48,6 +48,7 @@ Everyone can use:
 
 - `!hello`, `!commands`
 - `!fact` / `!funfact` for a random fun fact
+- `!member` to show your Twitch account age and creation date
 - `!uptime`, `!viewers`, `!title`, `!game`
 - `!dice [sides]` (2-1000 sides; defaults to 6), `!coinflip`, `!8ball <question>`
 - `!lurk`, `!back`

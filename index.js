@@ -333,11 +333,41 @@ async function handleCommand(channelLogin, channel, username, message, isMod) {
 
       case "!commands":
         reply(
-          "Commands: !hello, !commands, !fact, !uptime, !viewers, !title, !game, " +
+          "Commands: !hello, !commands, !fact, !member, !uptime, !viewers, !title, !game, " +
           "!dice [sides], !coinflip, !8ball <question>, !lurk, !back, " +
           "!so username, !timeout, !ban, !unban (mod commands)"
         );
         break;
+
+      case "!member": {
+        const user = await findUser(username);
+
+        if (!user) {
+          reply(`Could not find Twitch account "${username}".`);
+          break;
+        }
+
+        const createdAt = Date.parse(user.created_at);
+
+        if (!Number.isFinite(createdAt)) {
+          throw new Error("Twitch returned an invalid account creation date.");
+        }
+
+        const ageDays = Math.max(
+          0,
+          Math.floor((Date.now() - createdAt) / 86400000)
+        );
+        const age = ageDays === 0
+          ? "less than a day"
+          : `${ageDays} ${ageDays === 1 ? "day" : "days"}`;
+        const joined = new Intl.DateTimeFormat("en-US", {
+          dateStyle: "medium",
+          timeZone: "UTC"
+        }).format(createdAt);
+
+        reply(`${user.display_name}'s Twitch account is ${age} old (created ${joined}).`);
+        break;
+      }
 
       case "!fact":
       case "!funfact":
