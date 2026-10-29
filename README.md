@@ -47,6 +47,7 @@ server for local use.
 Everyone can use:
 
 - `!hello`, `!commands`
+- `!fact` / `!funfact` for a random fun fact
 - `!uptime`, `!viewers`, `!title`, `!game`
 - `!dice [sides]` (2-1000 sides; defaults to 6), `!coinflip`, `!8ball <question>`
 - `!lurk`, `!back`

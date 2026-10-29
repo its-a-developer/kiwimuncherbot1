@@ -59,6 +59,23 @@ let chat = null;
 let oauthState = null;
 let reconnectTimer = null;
 
+const FUN_FACTS = [
+  "Octopuses have three hearts: two pump blood to the gills and one pumps it to the rest of the body.",
+  "Honey never spoils. Archaeologists have found edible honey in ancient tombs.",
+  "Bananas are berries, but strawberries are not.",
+  "A day on Venus is longer than a year on Venus.",
+  "Wombat poop is cube-shaped.",
+  "The Eiffel Tower can grow by up to 15 cm in the summer due to heat expansion.",
+  "There are more possible iterations of a game of chess than there are atoms in the observable universe.",
+  "A group of flamingos is called a flamboyance.",
+  "Sharks are older than trees.",
+  "The shortest war in history lasted 38 to 45 minutes.",
+  "Dolphins have unique names for each other.",
+  "A cloud can weigh more than 1 million pounds.",
+  "The human brain uses around 20% of the body's total energy.",
+  "Some turtles can breathe through their butts."
+];
+
 function loadTokens() {
   try {
     return JSON.parse(fs.readFileSync(TOKEN_FILE, "utf8"));
@@ -316,10 +333,15 @@ async function handleCommand(channelLogin, channel, username, message, isMod) {
 
       case "!commands":
         reply(
-          "Commands: !hello, !commands, !uptime, !viewers, !title, !game, " +
+          "Commands: !hello, !commands, !fact, !uptime, !viewers, !title, !game, " +
           "!dice [sides], !coinflip, !8ball <question>, !lurk, !back, " +
           "!so username, !timeout, !ban, !unban (mod commands)"
         );
+        break;
+
+      case "!fact":
+      case "!funfact":
+        reply(`Fun fact: ${FUN_FACTS[crypto.randomInt(0, FUN_FACTS.length)]}`);
         break;
 
       case "!uptime": {
