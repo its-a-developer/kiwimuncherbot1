@@ -2,10 +2,10 @@
   "name": "kiwimuncherbot1",
   "version": "1.0.0",
   "description": "",
-  "main": "home/container/index.js",
+  "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node home/container/index.js"
+    "test": "node --check index.js",
+    "start": "node index.js"
   },
   "repository": {
     "type": "git",
