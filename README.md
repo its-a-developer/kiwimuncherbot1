@@ -1,4 +1,4 @@
-# kiwimuncherbot1
+# kiwimuncherbot
 
 ## Run
 
