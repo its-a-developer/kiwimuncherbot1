@@ -11,11 +11,13 @@ const {
   TWITCH_CLIENT,
   TWITCH_CLIENT_SECRET,
   TWITCH_BOT_USERNAME,
+  TWITCH_CHANNELS: configuredChannels,
   TWITCH_CHANNEL,
   OAUTH_REDIRECT_URI
 } = process.env;
 
 const TWITCH_CLIENT_ID = configuredClientId || TWITCH_CLIENT;
+const configuredChannelNames = configuredChannels || TWITCH_CHANNEL;
 const PORT = 3000;
 const TOKEN_FILE = "./tokens.json";
 
@@ -23,7 +25,7 @@ for (const [name, value] of Object.entries({
   TWITCH_CLIENT_ID,
   TWITCH_CLIENT_SECRET,
   TWITCH_BOT_USERNAME,
-  TWITCH_CHANNEL,
+  TWITCH_CHANNELS: configuredChannelNames,
   OAUTH_REDIRECT_URI
 })) {
   if (!value || value.startsWith("YOUR_") ||
@@ -34,12 +36,25 @@ for (const [name, value] of Object.entries({
 }
 
 const botLogin = TWITCH_BOT_USERNAME.toLowerCase().replace(/^@/, "");
-const channelLogin = TWITCH_CHANNEL.toLowerCase().replace(/^@/, "");
+const channelLogins = [...new Set(
+  configuredChannelNames
+    .split(",")
+    .map((channel) => channel.trim().toLowerCase().replace(/^@/, ""))
+    .filter(Boolean)
+)];
+
+if (
+  channelLogins.length === 0 ||
+  channelLogins.some((login) => !/^[a-z0-9_]{1,25}$/.test(login))
+) {
+  console.error("Configure TWITCH_CHANNELS as comma-separated Twitch usernames.");
+  process.exit(1);
+}
 
 let tokens = loadTokens();
 let appToken = null;
 let botId = null;
-let broadcasterId = null;
+let channels = new Map();
 let chat = null;
 let oauthState = null;
 let reconnectTimer = null;
@@ -181,20 +196,33 @@ async function findUser(login) {
 
 async function initialise() {
   const bot = await findUser(botLogin);
-  const broadcaster = await findUser(channelLogin);
 
-  if (!bot || !broadcaster) {
-    throw new Error("Could not find the bot or channel account.");
+  if (!bot) {
+    throw new Error("Could not find the bot account.");
+  }
+
+  const channelUsers = await Promise.all(
+    channelLogins.map(async (login) => [login, await findUser(login)])
+  );
+  const missingChannel = channelUsers.find(([, user]) => !user);
+
+  if (missingChannel) {
+    throw new Error(`Could not find channel account "${missingChannel[0]}".`);
   }
 
   botId = bot.id;
-  broadcasterId = broadcaster.id;
+  channels = new Map(
+    channelUsers.map(([login, user]) => [
+      login,
+      { login: user.login, broadcasterId: user.id }
+    ])
+  );
 
   console.log(`Bot account: ${bot.login}`);
-  console.log(`Target channel: ${broadcaster.login}`);
+  console.log(`Target channels: ${[...channels.keys()].map((login) => `#${login}`).join(", ")}`);
 }
 
-function sendChat(message) {
+function sendChat(channelLogin, message) {
   if (!chat || chat.readyState !== WebSocket.OPEN) return;
 
   const safeMessage = String(message)
@@ -206,30 +234,30 @@ function sendChat(message) {
   );
 }
 
-async function getStream() {
+async function getStream(channel) {
   const result = await twitchApi(
-    `streams?user_id=${encodeURIComponent(broadcasterId)}`
+    `streams?user_id=${encodeURIComponent(channel.broadcasterId)}`
   );
 
   return result.data?.[0] || null;
 }
 
-async function getChannelInfo() {
+async function getChannelInfo(channel) {
   const result = await twitchApi(
-    `channels?broadcaster_id=${encodeURIComponent(broadcasterId)}`
+    `channels?broadcaster_id=${encodeURIComponent(channel.broadcasterId)}`
   );
 
   return result.data?.[0] || null;
 }
 
-async function moderate(login, duration, reason) {
+async function moderate(channel, login, duration, reason) {
   const target = await findUser(login);
 
   if (!target) {
     throw new Error(`User "${login}" was not found.`);
   }
 
-  if (target.id === botId || target.id === broadcasterId) {
+  if (target.id === botId || target.id === channel.broadcasterId) {
     throw new Error("The bot and broadcaster cannot be targeted.");
   }
 
@@ -241,7 +269,7 @@ async function moderate(login, duration, reason) {
   if (duration !== null) data.duration = duration;
 
   await twitchApi(
-    `moderation/bans?broadcaster_id=${encodeURIComponent(broadcasterId)}` +
+    `moderation/bans?broadcaster_id=${encodeURIComponent(channel.broadcasterId)}` +
     `&moderator_id=${encodeURIComponent(botId)}`,
     {
       method: "POST",
@@ -253,19 +281,19 @@ async function moderate(login, duration, reason) {
   return target.login;
 }
 
-async function unban(login) {
+async function unban(channel, login) {
   const target = await findUser(login);
 
   if (!target) {
     throw new Error(`User "${login}" was not found.`);
   }
 
-  if (target.id === botId || target.id === broadcasterId) {
+  if (target.id === botId || target.id === channel.broadcasterId) {
     throw new Error("The bot and broadcaster cannot be targeted.");
   }
 
   await twitchApi(
-    `moderation/bans?broadcaster_id=${encodeURIComponent(broadcasterId)}` +
+    `moderation/bans?broadcaster_id=${encodeURIComponent(channel.broadcasterId)}` +
     `&moderator_id=${encodeURIComponent(botId)}` +
     `&user_id=${encodeURIComponent(target.id)}`,
     { method: "DELETE" },
@@ -275,18 +303,19 @@ async function unban(login) {
   return target.login;
 }
 
-async function handleCommand(username, message, isMod) {
+async function handleCommand(channelLogin, channel, username, message, isMod) {
+  const reply = (message) => sendChat(channelLogin, message);
   const parts = message.trim().split(/\s+/);
   const command = parts[0].toLowerCase();
 
   try {
     switch (command) {
       case "!hello":
-        sendChat(`Hello, ${username}!`);
+        reply(`Hello, ${username}!`);
         break;
 
       case "!commands":
-        sendChat(
+        reply(
           "Commands: !hello, !commands, !uptime, !viewers, !title, !game, " +
           "!dice [sides], !coinflip, !8ball <question>, !lurk, !back, " +
           "!so username, !timeout, !ban, !unban (mod commands)"
@@ -294,10 +323,10 @@ async function handleCommand(username, message, isMod) {
         break;
 
       case "!uptime": {
-        const stream = await getStream();
+        const stream = await getStream(channel);
 
         if (!stream) {
-          sendChat("The channel is currently offline.");
+          reply("The channel is currently offline.");
           break;
         }
 
@@ -310,13 +339,13 @@ async function handleCommand(username, message, isMod) {
         const hours = Math.floor(totalMinutes / 60);
         const minutes = totalMinutes % 60;
 
-        sendChat(`Stream uptime: ${hours}h ${minutes}m.`);
+        reply(`Stream uptime: ${hours}h ${minutes}m.`);
         break;
       }
 
       case "!viewers": {
-        const stream = await getStream();
-        sendChat(
+        const stream = await getStream(channel);
+        reply(
           stream
             ? `There are ${stream.viewer_count} viewers in the channel.`
             : "The channel is currently offline."
@@ -325,14 +354,14 @@ async function handleCommand(username, message, isMod) {
       }
 
       case "!title": {
-        const info = await getChannelInfo();
-        sendChat(info ? `Stream title: ${info.title}` : "Channel information unavailable.");
+        const info = await getChannelInfo(channel);
+        reply(info ? `Stream title: ${info.title}` : "Channel information unavailable.");
         break;
       }
 
       case "!game": {
-        const info = await getChannelInfo();
-        sendChat(
+        const info = await getChannelInfo(channel);
+        reply(
           info
             ? `Current category: ${info.game_name || "None set"}`
             : "Channel information unavailable."
@@ -345,21 +374,21 @@ async function handleCommand(username, message, isMod) {
         const sides = Number(sidesText);
 
         if (!/^\d+$/.test(sidesText) || sides < 2 || sides > 1000) {
-          sendChat("Usage: !dice [sides] (choose between 2 and 1000).");
+          reply("Usage: !dice [sides] (choose between 2 and 1000).");
           break;
         }
 
-        sendChat(`${username} rolled ${crypto.randomInt(1, sides + 1)} (1-${sides}).`);
+        reply(`${username} rolled ${crypto.randomInt(1, sides + 1)} (1-${sides}).`);
         break;
       }
 
       case "!coinflip":
-        sendChat(`Coin flip: ${crypto.randomInt(0, 2) === 0 ? "heads" : "tails"}.`);
+        reply(`Coin flip: ${crypto.randomInt(0, 2) === 0 ? "heads" : "tails"}.`);
         break;
 
       case "!8ball": {
         if (parts.length < 2) {
-          sendChat("Ask a question after !8ball.");
+          reply("Ask a question after !8ball.");
           break;
         }
 
@@ -374,39 +403,39 @@ async function handleCommand(username, message, isMod) {
           "Outlook is good."
         ];
 
-        sendChat(answers[crypto.randomInt(0, answers.length)]);
+        reply(answers[crypto.randomInt(0, answers.length)]);
         break;
       }
 
       case "!lurk":
-        sendChat(`${username} is lurking. Thanks for hanging out!`);
+        reply(`${username} is lurking. Thanks for hanging out!`);
         break;
 
       case "!back":
-        sendChat(`Welcome back, ${username}!`);
+        reply(`Welcome back, ${username}!`);
         break;
 
       case "!so": {
         if (!isMod) {
-          sendChat(`${username}, that command is for moderators only.`);
+          reply(`${username}, that command is for moderators only.`);
           break;
         }
 
         const target = (parts[1] || "").replace(/^@/, "");
 
         if (!/^[a-zA-Z0-9_]{1,25}$/.test(target)) {
-          sendChat("Usage: !so username");
+          reply("Usage: !so username");
           break;
         }
 
         const user = await findUser(target);
 
         if (!user) {
-          sendChat(`Could not find Twitch user "${target}".`);
+          reply(`Could not find Twitch user "${target}".`);
           break;
         }
 
-        sendChat(`Go check out ${user.display_name}: https://twitch.tv/${user.login}`);
+        reply(`Go check out ${user.display_name}: https://twitch.tv/${user.login}`);
         break;
       }
 
@@ -414,22 +443,22 @@ async function handleCommand(username, message, isMod) {
       case "!ban":
       case "!unban": {
         if (!isMod) {
-          sendChat(`${username}, that command is for moderators only.`);
+          reply(`${username}, that command is for moderators only.`);
           break;
         }
 
         const target = (parts[1] || "").replace(/^@/, "");
 
         if (!/^[a-zA-Z0-9_]{1,25}$/.test(target)) {
-          sendChat(
+          reply(
             "Usage: !timeout username [seconds] [reason], !ban username [reason], or !unban username"
           );
           break;
         }
 
         if (command === "!unban") {
-          const name = await unban(target);
-          sendChat(`${name} has been unbanned.`);
+          const name = await unban(channel, target);
+          reply(`${name} has been unbanned.`);
         } else if (command === "!timeout") {
           const secondsText = parts[2] || "60";
           const seconds = Number(secondsText);
@@ -439,19 +468,19 @@ async function handleCommand(username, message, isMod) {
             seconds < 1 ||
             seconds > 1209600
           ) {
-            sendChat("Timeout duration must be between 1 and 1209600 seconds.");
+            reply("Timeout duration must be between 1 and 1209600 seconds.");
             break;
           }
 
           const reason = parts.slice(3).join(" ") || "Moderator timeout";
-          const name = await moderate(target, seconds, reason);
+          const name = await moderate(channel, target, seconds, reason);
 
-          sendChat(`${name} timed out for ${seconds} seconds.`);
+          reply(`${name} timed out for ${seconds} seconds.`);
         } else {
           const reason = parts.slice(2).join(" ") || "Moderator ban";
-          const name = await moderate(target, null, reason);
+          const name = await moderate(channel, target, null, reason);
 
-          sendChat(`${name} has been banned.`);
+          reply(`${name} has been banned.`);
         }
 
         break;
@@ -459,7 +488,7 @@ async function handleCommand(username, message, isMod) {
     }
   } catch (error) {
     console.error(`Command ${command} failed:`, error.message);
-    sendChat("Command failed. Check bot permissions and terminal logs.");
+    reply("Command failed. Check bot permissions and terminal logs.");
   }
 }
 
@@ -480,9 +509,9 @@ function connectChat() {
       chat.send(
         "CAP REQ :twitch.tv/tags twitch.tv/commands\r\n"
       );
-      chat.send(`JOIN #${channelLogin}\r\n`);
+      chat.send(`JOIN ${channelLogins.map((login) => `#${login}`).join(",")}\r\n`);
 
-      console.log(`Connected to Twitch chat: #${channelLogin}`);
+      console.log(`Connected to Twitch chat: ${channelLogins.map((login) => `#${login}`).join(", ")}`);
     } catch (error) {
       console.error("Chat authentication failed:", error.message);
       chat.close();
@@ -506,14 +535,16 @@ function connectChat() {
       }
 
       const userMatch = line.match(/ :([^!]+)!/);
-      const messageMatch = line.match(/PRIVMSG #\S+ :(.*)$/);
+      const messageMatch = line.match(/PRIVMSG #(\S+) :(.*)$/);
 
       if (!userMatch || !messageMatch) continue;
 
       const username = userMatch[1].toLowerCase();
-      const message = messageMatch[1];
+      const channelLogin = messageMatch[1].toLowerCase();
+      const message = messageMatch[2];
+      const channel = channels.get(channelLogin);
 
-      if (username === botLogin || !message.startsWith("!")) continue;
+      if (!channel || username === botLogin || !message.startsWith("!")) continue;
 
       const badgesMatch = line.match(/(?:^| )badges=([^; ]*)/);
       const badges = badgesMatch ? badgesMatch[1] : "";
@@ -522,7 +553,7 @@ function connectChat() {
         badges.split(",").includes("moderator/1") ||
         badges.split(",").includes("broadcaster/1");
 
-      await handleCommand(username, message, isMod);
+      await handleCommand(channelLogin, channel, username, message, isMod);
     }
   });
 

@@ -12,7 +12,9 @@ npm start
 Configure these values in `.env` before starting:
 
 - `TWITCH_CLIENT_ID` (or `TWITCH_CLIENT`) and `TWITCH_CLIENT_SECRET`
-- `TWITCH_BOT_USERNAME` and `TWITCH_CHANNEL`
+- `TWITCH_BOT_USERNAME` and `TWITCH_CHANNELS`, a comma-separated list of
+  Twitch channel usernames (for example, `channel_one,channel_two`). The
+  legacy `TWITCH_CHANNEL` setting is still supported for one channel.
 - `OAUTH_REDIRECT_URI`, set to the callback URL registered for the Twitch
   application, ending in `/auth/twitch/callback`
 
@@ -30,4 +32,4 @@ Everyone can use:
 
 Moderators can also use `!so username`, `!timeout username [seconds] [reason]`,
 `!ban username [reason]`, and `!unban username`. The bot account needs the
-appropriate moderator permissions in the channel for moderation actions.
+appropriate moderator permissions in each channel for moderation actions.
