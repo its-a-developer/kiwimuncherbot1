@@ -320,7 +320,14 @@ async function unban(channel, login) {
   return target.login;
 }
 
-async function handleCommand(channelLogin, channel, username, message, isMod) {
+async function handleCommand(
+  channelLogin,
+  channel,
+  username,
+  message,
+  isMod,
+  isBroadcaster
+) {
   const reply = (message) => sendChat(channelLogin, message);
   const parts = message.trim().split(/\s+/);
   const command = parts[0].toLowerCase();
@@ -333,9 +340,9 @@ async function handleCommand(channelLogin, channel, username, message, isMod) {
 
       case "!commands":
         reply(
-          "Commands: !hello, !commands, !fact, !member, !uptime, !viewers, !title, !game, " +
-          "!dice [sides], !coinflip, !8ball <question>, !lurk, !back, " +
-          "!so username, !timeout, !ban, !unban (mod commands)"
+          "Commands: !hello, !commands, !fact, !funfact, !member, !uptime, !viewers, !title, !game, " +
+          "!dice [sides], !coinflip, !8ball <question>, !lurk, !back; " +
+          "mods: !so username, !timeout, !ban, !unban; broadcaster: !mod username"
         );
         break;
 
@@ -491,6 +498,30 @@ async function handleCommand(channelLogin, channel, username, message, isMod) {
         break;
       }
 
+      case "!mod": {
+        if (!isBroadcaster) {
+          reply(`${username}, that command is for the broadcaster only.`);
+          break;
+        }
+
+        const target = (parts[1] || "").replace(/^@/, "");
+
+        if (!/^[a-zA-Z0-9_]{1,25}$/.test(target)) {
+          reply("Usage: !mod username");
+          break;
+        }
+
+        const user = await findUser(target);
+
+        if (!user) {
+          reply(`Could not find Twitch user "${target}".`);
+          break;
+        }
+
+        sendChat(channelLogin, `/mod ${user.login}`);
+        break;
+      }
+
       case "!timeout":
       case "!ban":
       case "!unban": {
@@ -604,8 +635,16 @@ function connectChat() {
       const isMod =
         badges.split(",").includes("moderator/1") ||
         badges.split(",").includes("broadcaster/1");
+      const isBroadcaster = badges.split(",").includes("broadcaster/1");
 
-      await handleCommand(channelLogin, channel, username, message, isMod);
+      await handleCommand(
+        channelLogin,
+        channel,
+        username,
+        message,
+        isMod,
+        isBroadcaster
+      );
     }
   });
 

@@ -54,5 +54,6 @@ Everyone can use:
 - `!lurk`, `!back`
 
 Moderators can also use `!so username`, `!timeout username [seconds] [reason]`,
-`!ban username [reason]`, and `!unban username`. The bot account needs the
-appropriate moderator permissions in each channel for moderation actions.
+`!ban username [reason]`, and `!unban username`. The broadcaster can use
+`!mod username` to make a user a moderator. The bot account needs to be a
+moderator in each channel for moderation actions.
