@@ -253,6 +253,28 @@ async function moderate(login, duration, reason) {
   return target.login;
 }
 
+async function unban(login) {
+  const target = await findUser(login);
+
+  if (!target) {
+    throw new Error(`User "${login}" was not found.`);
+  }
+
+  if (target.id === botId || target.id === broadcasterId) {
+    throw new Error("The bot and broadcaster cannot be targeted.");
+  }
+
+  await twitchApi(
+    `moderation/bans?broadcaster_id=${encodeURIComponent(broadcasterId)}` +
+    `&moderator_id=${encodeURIComponent(botId)}` +
+    `&user_id=${encodeURIComponent(target.id)}`,
+    { method: "DELETE" },
+    true
+  );
+
+  return target.login;
+}
+
 async function handleCommand(username, message, isMod) {
   const parts = message.trim().split(/\s+/);
   const command = parts[0].toLowerCase();
@@ -265,7 +287,9 @@ async function handleCommand(username, message, isMod) {
 
       case "!commands":
         sendChat(
-          "Commands: !hello, !commands, !uptime, !title, !game, !timeout, !ban"
+          "Commands: !hello, !commands, !uptime, !viewers, !title, !game, " +
+          "!dice [sides], !coinflip, !8ball <question>, !lurk, !back, " +
+          "!so username, !timeout, !ban, !unban (mod commands)"
         );
         break;
 
@@ -290,6 +314,16 @@ async function handleCommand(username, message, isMod) {
         break;
       }
 
+      case "!viewers": {
+        const stream = await getStream();
+        sendChat(
+          stream
+            ? `There are ${stream.viewer_count} viewers in the channel.`
+            : "The channel is currently offline."
+        );
+        break;
+      }
+
       case "!title": {
         const info = await getChannelInfo();
         sendChat(info ? `Stream title: ${info.title}` : "Channel information unavailable.");
@@ -306,8 +340,53 @@ async function handleCommand(username, message, isMod) {
         break;
       }
 
-      case "!timeout":
-      case "!ban": {
+      case "!dice": {
+        const sidesText = parts[1] || "6";
+        const sides = Number(sidesText);
+
+        if (!/^\d+$/.test(sidesText) || sides < 2 || sides > 1000) {
+          sendChat("Usage: !dice [sides] (choose between 2 and 1000).");
+          break;
+        }
+
+        sendChat(`${username} rolled ${crypto.randomInt(1, sides + 1)} (1-${sides}).`);
+        break;
+      }
+
+      case "!coinflip":
+        sendChat(`Coin flip: ${crypto.randomInt(0, 2) === 0 ? "heads" : "tails"}.`);
+        break;
+
+      case "!8ball": {
+        if (parts.length < 2) {
+          sendChat("Ask a question after !8ball.");
+          break;
+        }
+
+        const answers = [
+          "It is certain.",
+          "Without a doubt.",
+          "You may rely on it.",
+          "Ask again later.",
+          "Cannot predict now.",
+          "Don't count on it.",
+          "My reply is no.",
+          "Outlook is good."
+        ];
+
+        sendChat(answers[crypto.randomInt(0, answers.length)]);
+        break;
+      }
+
+      case "!lurk":
+        sendChat(`${username} is lurking. Thanks for hanging out!`);
+        break;
+
+      case "!back":
+        sendChat(`Welcome back, ${username}!`);
+        break;
+
+      case "!so": {
         if (!isMod) {
           sendChat(`${username}, that command is for moderators only.`);
           break;
@@ -316,11 +395,42 @@ async function handleCommand(username, message, isMod) {
         const target = (parts[1] || "").replace(/^@/, "");
 
         if (!/^[a-zA-Z0-9_]{1,25}$/.test(target)) {
-          sendChat("Usage: !timeout username [seconds] [reason] or !ban username [reason]");
+          sendChat("Usage: !so username");
           break;
         }
 
-        if (command === "!timeout") {
+        const user = await findUser(target);
+
+        if (!user) {
+          sendChat(`Could not find Twitch user "${target}".`);
+          break;
+        }
+
+        sendChat(`Go check out ${user.display_name}: https://twitch.tv/${user.login}`);
+        break;
+      }
+
+      case "!timeout":
+      case "!ban":
+      case "!unban": {
+        if (!isMod) {
+          sendChat(`${username}, that command is for moderators only.`);
+          break;
+        }
+
+        const target = (parts[1] || "").replace(/^@/, "");
+
+        if (!/^[a-zA-Z0-9_]{1,25}$/.test(target)) {
+          sendChat(
+            "Usage: !timeout username [seconds] [reason], !ban username [reason], or !unban username"
+          );
+          break;
+        }
+
+        if (command === "!unban") {
+          const name = await unban(target);
+          sendChat(`${name} has been unbanned.`);
+        } else if (command === "!timeout") {
           const secondsText = parts[2] || "60";
           const seconds = Number(secondsText);
 

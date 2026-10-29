@@ -18,3 +18,16 @@ Configure these values in `.env` before starting:
 
 The server listens on port 3000. Open its URL followed by `/login` to authorize
 the bot.
+
+## Chat commands
+
+Everyone can use:
+
+- `!hello`, `!commands`
+- `!uptime`, `!viewers`, `!title`, `!game`
+- `!dice [sides]` (2-1000 sides; defaults to 6), `!coinflip`, `!8ball <question>`
+- `!lurk`, `!back`
+
+Moderators can also use `!so username`, `!timeout username [seconds] [reason]`,
+`!ban username [reason]`, and `!unban username`. The bot account needs the
+appropriate moderator permissions in the channel for moderation actions.
